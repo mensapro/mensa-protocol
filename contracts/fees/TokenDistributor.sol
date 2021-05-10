@@ -86,6 +86,7 @@ contract TokenDistributor is Ownable, VersionedInitializable {
     /// @notice Distributes a list of _tokens balances in this contract, depending on the distribution
     /// @param _tokens list of ERC20 tokens to distribute
     function distribute(IERC20[] memory _tokens) public {
+        require(_tokens.length < 64, "Too many tokens to distribute.");
         for (uint256 i = 0; i < _tokens.length; i++) {
             address _tokenAddress = address(_tokens[i]);
             uint256 _balanceToDistribute = (_tokenAddress != EthAddressLib.ethAddress())
@@ -121,6 +122,7 @@ contract TokenDistributor is Ownable, VersionedInitializable {
     /// @notice "Infinite" approval for all the tokens initialized
     /// @param _tokens List of IERC20 to approve
     function approveKyber(IERC20[] memory _tokens) public {
+        require(_tokens.length < 64, "Too many tokens to approve.");
         for (uint256 i = 0; i < _tokens.length; i++) {
             if (address(_tokens[i]) != EthAddressLib.ethAddress()) {
                 _tokens[i].safeApprove(address(kyberProxy), MAX_UINT_MINUS_ONE);
