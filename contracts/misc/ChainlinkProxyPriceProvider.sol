@@ -83,6 +83,7 @@ contract ChainlinkProxyPriceProvider is IPriceOracleGetter, Ownable {
     /// @notice Gets a list of prices from a list of assets addresses
     /// @param _assets The list of assets addresses
     function getAssetsPrices(address[] calldata _assets) external view returns(uint256[] memory) {
+        require(_assets.length<64, "Too many assets to query.");
         uint256[] memory prices = new uint256[](_assets.length);
         for (uint256 i = 0; i < _assets.length; i++) {
             prices[i] = getAssetPrice(_assets[i]);
