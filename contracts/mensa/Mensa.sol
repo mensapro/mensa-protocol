@@ -38,8 +38,6 @@ contract Mensa is VersionedInitializable {
 
     bool private _notEntered;
 
-    
-
     /**
     * @dev emitted on deposit
     * @param _reserve the address of the reserve
@@ -326,7 +324,7 @@ contract Mensa is VersionedInitializable {
         //transfer to the core contract
         core.transferToReserve.value(msg.value)(_reserve, msg.sender, _amount);
 
-        minter.mintMensaToken(1, msg.sender, dataProvider.getReserveValues(_reserve, _amount));
+        minter.mintMensaToken(_reserve, msg.sender, 1, dataProvider.getReserveValues(_reserve, _amount));
         //solium-disable-next-line
         emit Deposit(_reserve, msg.sender, _amount, _referralCode, block.timestamp);
 
@@ -361,7 +359,7 @@ contract Mensa is VersionedInitializable {
 
         core.transferToUser(_reserve, _user, _amount);
 
-        minter.withdrawMensaToken(1, _user, dataProvider.getReserveValues(_reserve, _amount));
+        minter.withdrawMensaToken(_user, 1, dataProvider.getReserveValues(_reserve, _amount), false);
         //solium-disable-next-line
         emit RedeemUnderlying(_reserve, _user, _amount, block.timestamp);
 
@@ -508,7 +506,7 @@ contract Mensa is VersionedInitializable {
         //if we reached this point, we can transfer
         core.transferToUser(_reserve, msg.sender, _amount);
 
-        minter.mintMensaToken(2, msg.sender, dataProvider.getReserveValues(_reserve, _amount));
+        minter.mintMensaToken(_reserve, msg.sender, 2, dataProvider.getReserveValues(_reserve, _amount));
         emit Borrow(
             _reserve,
             msg.sender,
@@ -599,7 +597,7 @@ contract Mensa is VersionedInitializable {
                 addressesProvider.getTokenDistributor()
             );
 
-            minter.withdrawMensaToken(2, msg.sender, dataProvider.getReserveValues(_reserve, vars.paybackAmount));
+            minter.withdrawMensaToken(msg.sender, 2, dataProvider.getReserveValues(_reserve, vars.paybackAmount), false);
             emit Repay(
                 _reserve,
                 _onBehalfOf,
@@ -643,7 +641,7 @@ contract Mensa is VersionedInitializable {
             vars.paybackAmountMinusFees
         );
 
-        minter.withdrawMensaToken(2, msg.sender, dataProvider.getReserveValues(_reserve, vars.paybackAmountMinusFees));
+        minter.withdrawMensaToken(msg.sender, 2, dataProvider.getReserveValues(_reserve, vars.paybackAmountMinusFees), false);
         emit Repay(
             _reserve,
             _onBehalfOf,
