@@ -9,7 +9,7 @@ import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
  * @dev Implementation of the interest bearing token for the DLP protocol.
  */
 contract MensaToken is ERC20, ERC20Detailed {
-    uint256 private _cap = 150000000e18;
+    uint256 private _cap = 200000000e18;
     uint256 private _supply = 0;
     constructor(
         string memory _name,

@@ -127,6 +127,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
 
     function setGroup(uint256 _pid, uint256 _gid, uint256 _allocPoint) public noReentrancy onlyOwner {
         require(_pid < poolLength(), "setGroup: _pid fault");
+        require(constPoolIsInit[_pid] == false, "init failed");
         if (poolInfo[_pid].groups[_gid].allocPoint == 0){
             idxGroups[_pid].push(_gid);
         }
@@ -445,6 +446,10 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     function withdrawPendingMensaToken(bool unlockedOnly) public {
         _withdrawPendingMensaToken(1, unlockedOnly); 
         _withdrawPendingMensaToken(2, unlockedOnly); 
+    }
+
+    function setPoolInited(uint256 _pid) public noReentrancy onlyOwner {
+        constPoolIsInit[_pid] = true;
     }
 
     function deposit(uint256 _pid, uint256 _gid, address u, uint256 _amount) external noReentrancy onlyOwner {
