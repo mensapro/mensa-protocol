@@ -7,16 +7,6 @@ import "../interfaces/IMensaAddressesProvider.sol";
 import "../interfaces/IMensaMinter.sol";
 import "./MensaToken.sol";
 
-//total		150000000
-
-//开发者生态      7500000
-//市场运营	  7500000
-//团队激励	  9000000
-//私募		  6000000
-//流动性	 60000000
-
-//创世		  6000000
-//二阶段	 54000000
 contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     using SafeMath for uint256;
     bool private locked;
@@ -42,10 +32,6 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     uint256 depositWithdraw = 1;
     uint256 borrowRepay = 2;
 
-    //uint256 protectDuration = 10; //seconds
-    //uint256 timesPerBlock = 1; //second(s) 
-    //uint256 protectDurationBlocks = protectDuration.div(timesPerBlock) ; 
-    //3 months
     uint256 protectDurationBlocks = 7070000 ; 
 
     PoolInfo[] private poolInfo;    
@@ -71,9 +57,9 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     }
 
     struct UserInfo {
-        uint256 amount;     // How many LP tokens the user has provided.
-        uint256 lastWithdrawBlock;  // Last block number that withdraw occurs.
-        uint256 rewardDebt; // Reward debt. See explanation below.
+        uint256 amount;
+        uint256 lastWithdrawBlock; 
+        uint256 rewardDebt;
         uint256 protectAmount;
         uint256 mintPending;
         uint256 protectMintPending;
@@ -81,7 +67,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     }
 
     struct Group {
-        uint256 allocPoint;       // How many allocation points assigned to this pool. 
+        uint256 allocPoint;       
         uint256 totalAmount;  
         uint256 accPerShare;
         mapping (address => UserInfo) users;
