@@ -32,7 +32,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     uint256 depositWithdraw = 1;
     uint256 borrowRepay = 2;
 
-    uint256 protectDurationBlocks = 7070000 ; 
+    uint256 protectDurationBlocks = 2356360; 
 
     PoolInfo[] private poolInfo;    
     mapping(uint256 => uint256[]) idxGroups;
@@ -58,7 +58,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
 
     struct UserInfo {
         uint256 amount;
-        uint256 lastWithdrawBlock; 
+        uint256 lastWithdrawBlock;
         uint256 rewardDebt;
         uint256 protectAmount;
         uint256 mintPending;
@@ -67,7 +67,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     }
 
     struct Group {
-        uint256 allocPoint;       
+        uint256 allocPoint;
         uint256 totalAmount;  
         uint256 accPerShare;
         mapping (address => UserInfo) users;
@@ -186,7 +186,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
                 flushCount = u.mintPending.sub(u.protectMintPending).add(poolPrice);
                 u.mintPending = u.protectMintPending;
             }else{
-                unlocked = u.protectMintPending.div(2); 
+                unlocked = u.protectMintPending.div(4); 
                 flushCount = u.mintPending.sub(unlocked).add(poolPrice); 
                 u.mintPending = 0;
                 u.protectMintPending = 0;
