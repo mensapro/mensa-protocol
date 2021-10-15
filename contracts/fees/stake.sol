@@ -2495,7 +2495,7 @@ contract MensaStaking is Ownable, CheckContract, BaseMath {
 
         // Transfer Mensa from caller to this contract
         bool succ = mensaToken.transferFrom(msg.sender, address(this), _MensaAmount);
-        require(succ);
+        require(succ, "Transfer from failed.");
 
         emit StakeChanged(msg.sender, newStake);
         emit Stake(msg.sender, _MensaAmount, block.timestamp);

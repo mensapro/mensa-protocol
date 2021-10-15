@@ -11,6 +11,7 @@ import "../tokenization/MToken.sol";
 import "../libraries/CoreLibrary.sol";
 import "../libraries/WadRayMath.sol";
 import "../interfaces/IFeeProvider.sol";
+import "../flashloan/interfaces/IFlashLoanReceiver.sol";
 import "../interfaces/IMensaMinter.sol";
 import "./MensaCore.sol";
 import "./MensaDataProvider.sol";
@@ -163,6 +164,24 @@ contract Mensa is VersionedInitializable {
     /**
     * @dev these events are not emitted directly by the Mensa
     * but they are declared here as the MensaLiquidationManager
+    * @param _reserve the address of the reserve
+    * @param _amount the amount requested
+    * @param _totalFee the total fee on the amount
+    * @param _protocolFee the part of the fee for the protocol
+    * @param _timestamp the timestamp of the action
+    **/
+    event FlashLoan(
+        address indexed _target,
+        address indexed _reserve,
+        uint256 _amount,
+        uint256 _totalFee,
+        uint256 _protocolFee,
+        uint256 _timestamp
+    );
+
+    /**
+    * @dev these events are not emitted directly by the LendingPool
+    * but they are declared here as the LendingPoolLiquidationManager
     * is executed using a delegateCall().
     * This allows to have the events in the generated ABI for Mensa.
     **/
@@ -274,10 +293,10 @@ contract Mensa is VersionedInitializable {
 
     uint256 public constant UINT_MAX_VALUE = uint256(-1);
 
-    uint256 public constant MENSA_REVISION = 0x2;
+    uint256 public constant XENSA_REVISION = 0x2;
 
     function getRevision() internal pure returns (uint256) {
-        return MENSA_REVISION;
+        return XENSA_REVISION;
     }
 
     /**
@@ -324,7 +343,10 @@ contract Mensa is VersionedInitializable {
         //transfer to the core contract
         core.transferToReserve.value(msg.value)(_reserve, msg.sender, _amount);
 
-        minter.mintMensaToken(_reserve, msg.sender, 1, dataProvider.getReserveValues(_reserve, _amount));
+        uint256 value;
+        uint256 dec;
+        (value, dec) = dataProvider.getReserveValues(_reserve);
+        minter.mintMensaToken(_reserve, msg.sender, 1, _amount, dec, value);
         //solium-disable-next-line
         emit Deposit(_reserve, msg.sender, _amount, _referralCode, block.timestamp);
 
@@ -359,7 +381,9 @@ contract Mensa is VersionedInitializable {
 
         core.transferToUser(_reserve, _user, _amount);
 
-        minter.withdrawMensaToken(_user, 1, dataProvider.getReserveValues(_reserve, _amount), false);
+        uint256 dec;
+        (, dec) = dataProvider.getReserveValues(_reserve);
+        minter.withdrawMensaToken(_reserve, _user, 1, _amount, dec, false);
         //solium-disable-next-line
         emit RedeemUnderlying(_reserve, _user, _amount, block.timestamp);
 
@@ -506,7 +530,10 @@ contract Mensa is VersionedInitializable {
         //if we reached this point, we can transfer
         core.transferToUser(_reserve, msg.sender, _amount);
 
-        minter.mintMensaToken(_reserve, msg.sender, 2, dataProvider.getReserveValues(_reserve, _amount));
+        uint256 value;
+        uint256 dec;
+        (value, dec) = dataProvider.getReserveValues(_reserve);
+        minter.mintMensaToken(_reserve, msg.sender, 2, _amount, dec, value);
         emit Borrow(
             _reserve,
             msg.sender,
@@ -596,8 +623,10 @@ contract Mensa is VersionedInitializable {
                 vars.paybackAmount,
                 addressesProvider.getTokenDistributor()
             );
-
-            minter.withdrawMensaToken(msg.sender, 2, dataProvider.getReserveValues(_reserve, vars.paybackAmount), false);
+ 
+            uint256 dec;
+            (, dec) = dataProvider.getReserveValues(_reserve);
+            minter.withdrawMensaToken(_reserve, msg.sender, 2, _amount, dec, false);
             emit Repay(
                 _reserve,
                 _onBehalfOf,
@@ -641,7 +670,9 @@ contract Mensa is VersionedInitializable {
             vars.paybackAmountMinusFees
         );
 
-        minter.withdrawMensaToken(msg.sender, 2, dataProvider.getReserveValues(_reserve, vars.paybackAmountMinusFees), false);
+        uint256 dec;
+        (, dec) = dataProvider.getReserveValues(_reserve);
+        minter.withdrawMensaToken(_reserve, msg.sender, 2, _amount, dec, false);
         emit Repay(
             _reserve,
             _onBehalfOf,
@@ -836,6 +867,75 @@ contract Mensa is VersionedInitializable {
             );
         //require(success==0, "Liquidation call failed");
         require(success==0, result);
+    }
+
+    /**
+    * @dev allows smartcontracts to access the liquidity of the pool within one transaction,
+    * as long as the amount taken plus a fee is returned. NOTE There are security concerns for developers of flashloan receiver contracts
+    * that must be kept into consideration. For further details please visit https://developers.aave.com
+    * @param _receiver The address of the contract receiving the funds. The receiver should implement the IFlashLoanReceiver interface.
+    * @param _reserve the address of the principal reserve
+    * @param _amount the amount requested for this flashloan
+    **/
+    function flashLoan(address _receiver, address _reserve, uint256 _amount, bytes memory _params)
+        public
+        nonReentrant
+        onlyActiveReserve(_reserve)
+        onlyAmountGreaterThanZero(_amount)
+    {
+        //check that the reserve has enough available liquidity
+        //we avoid using the getAvailableLiquidity() function in LendingPoolCore to save gas
+        uint256 availableLiquidityBefore = _reserve == EthAddressLib.ethAddress()
+            ? address(core).balance
+            : IERC20(_reserve).balanceOf(address(core));
+
+        require(
+            availableLiquidityBefore >= _amount,
+            "There is not enough liquidity available to borrow"
+        );
+
+        (uint256 totalFeeBips, uint256 protocolFeeBips) = parametersProvider
+            .getFlashLoanFeesInBips();
+        //calculate amount fee
+        uint256 amountFee = _amount.mul(totalFeeBips).div(10000);
+
+        //protocol fee is the part of the amountFee reserved for the protocol - the rest goes to depositors
+        uint256 protocolFee = amountFee.mul(protocolFeeBips).div(10000);
+        require(
+            amountFee > 0 && protocolFee > 0,
+            "The requested amount is too small for a flashLoan."
+        );
+
+        //get the FlashLoanReceiver instance
+        IFlashLoanReceiver receiver = IFlashLoanReceiver(_receiver);
+
+        address payable userPayable = address(uint160(_receiver));
+
+        //transfer funds to the receiver
+        core.transferToUser(_reserve, userPayable, _amount);
+
+        //execute action of the receiver
+        receiver.executeOperation(_reserve, _amount, amountFee, _params);
+
+        //check that the actual balance of the core contract includes the returned amount
+        uint256 availableLiquidityAfter = _reserve == EthAddressLib.ethAddress()
+            ? address(core).balance
+            : IERC20(_reserve).balanceOf(address(core));
+
+        require(
+            availableLiquidityAfter == availableLiquidityBefore.add(amountFee),
+            "The actual balance of the protocol is inconsistent"
+        );
+
+        core.updateStateOnFlashLoan(
+            _reserve,
+            availableLiquidityBefore,
+            amountFee.sub(protocolFee),
+            protocolFee
+        );
+
+        //solium-disable-next-line
+        emit FlashLoan(_receiver, _reserve, _amount, amountFee, protocolFee, block.timestamp);
     }
 
     /**

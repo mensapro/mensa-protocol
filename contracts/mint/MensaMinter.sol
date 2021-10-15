@@ -21,8 +21,11 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         locked = false;
     }
 
+    event CreatePool(address indexed user, uint256 indexed pid, uint256 poolCap, uint256 startBlock, uint256 endBlock);
+    event SetGroup(address indexed user, uint256 indexed pid, uint256 gid, uint256 allocPoint);
+    event PoolActive(address indexed user, uint256 indexed pid);
     event MintDeposit(address indexed user, uint256 indexed pid, uint256 gid, uint256 amount, uint256 total);
-    event MintWithdraw(address indexed user, uint256 indexed pid, uint256 gid, uint256 amount, uint256 total, uint256 received);
+    event MintWithdraw(address indexed user, uint256 indexed pid, uint256 gid, uint256 amount, uint256 total, uint256 received, uint256 fine);
 
     uint256 private _alloced = 0;
     
@@ -35,12 +38,29 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
     uint256 protectDurationBlocks = 2356360; 
 
     PoolInfo[] private poolInfo;    
-    mapping(uint256 => uint256[]) idxGroups;
+    mapping(uint256 => uint256[]) private idxGroups;
     IMensaAddressesProvider ap;
     address private lp;
 
-    mapping(uint256 => bool) constPoolIsInit;
-    constructor(address addressAp) public MensaToken("MensaToken", "MENSA") {
+    mapping(uint256 => bool) private constPoolIsInit;
+    struct stakeInfo {
+        uint256 amount; 
+        uint256 AVP; 
+    }
+    struct mintLocalVar {
+        uint256 poolStartBlock;
+        uint256 poolEndBlock;
+        uint256 groupTotalAmount;
+        uint256 groupAccPerShare;
+        uint256 groupPricePerStake;
+        uint256 userAmount;
+        uint256 userProtectAmount;
+        uint256 userPDA;
+        uint256 userReceivedPerStake;
+        uint256 userMintPending;
+        uint256 userProtectMintPending;
+    }
+    constructor(address addressAp) public MensaToken("MensaToken", "XENSA") {
 	ap = IMensaAddressesProvider(addressAp); 
     }
     function setLp(address addressLP) public noReentrancy onlyOwner {
@@ -63,6 +83,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         uint256 protectAmount;
         uint256 mintPending;
         uint256 protectMintPending;
+        uint256 receivedPerStake;
         uint256 PDA;
     }
 
@@ -70,7 +91,9 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         uint256 allocPoint;
         uint256 totalAmount;  
         uint256 accPerShare;
+        uint256 pricePerStake;
         mapping (address => UserInfo) users;
+        mapping(address => mapping(address=>stakeInfo)) userStakeInfo;
     }
 
     struct PoolInfo {
@@ -94,21 +117,22 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         _poolCap = _poolCap.mul(1e18);
         require(_poolCap > 0, "createPool: cap fault");
 
-	_alloced = _alloced.add(_poolCap);
+        _alloced = _alloced.add(_poolCap);
         uint256 startBlock = block.number > _startBlock ? block.number : _startBlock;
-        
+
         require(_endBlock > startBlock , "createPool: Invailed block parameters 2");
-	uint256 _bonusPerBlock = _poolCap.div(_endBlock.sub(startBlock));
+        uint256 _bonusPerBlock = _poolCap.div(_endBlock.sub(startBlock));
 
         poolInfo.push(PoolInfo({
-            poolCap: _poolCap,
-            totalAllocPoint: 0,
-            startBlock: startBlock,
-            endBlock: _endBlock,
-            bonusPerBlock: _bonusPerBlock,
-	    lockedTotal: 0,
-            ageout: false
+        poolCap: _poolCap,
+        totalAllocPoint: 0,
+        startBlock: startBlock,
+        endBlock: _endBlock,
+        bonusPerBlock: _bonusPerBlock,
+        lockedTotal: 0,
+        ageout: false
         }));
+        emit CreatePool(msg.sender, _pid, _poolCap, _startBlock, _endBlock);
     }
 
     function setGroup(uint256 _pid, uint256 _gid, uint256 _allocPoint) public noReentrancy onlyOwner {
@@ -121,11 +145,13 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         poolInfo[_pid].groups[_gid] = Group({
             allocPoint: _allocPoint,
             totalAmount: 0,
-            accPerShare: 0
+            accPerShare: 0,
+            pricePerStake: 0
         });
-	massUpdateGroups(_pid);
+	    massUpdateGroups(_pid);
+        emit SetGroup(msg.sender, _pid, _gid, _allocPoint);
     }
-   
+    
     function getMultiplier(uint256 _from, uint256 _to, uint256 _start, uint256 _end) internal pure returns (uint256) {
         require(_from <= _to, "Block counting: ");
         require(_start <= _end, "Block counting: ");
@@ -186,7 +212,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
                 flushCount = u.mintPending.sub(u.protectMintPending).add(poolPrice);
                 u.mintPending = u.protectMintPending;
             }else{
-                unlocked = u.protectMintPending.div(4); 
+                unlocked = u.protectMintPending.mul(30).div(100); 
                 flushCount = u.mintPending.sub(unlocked).add(poolPrice); 
                 u.mintPending = 0;
                 u.protectMintPending = 0;
@@ -195,14 +221,15 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
                 mint(address(this), flushCount);
                 this.transfer(userAddr, flushCount);
             }
+        }else{
+                u.mintPending.add(poolPrice);
         }
     }
 
     function updateGroup(uint256 _pid, uint256 _gid) internal {
-        PoolInfo storage pool = poolInfo[_pid];
-        Group storage group = pool.groups[_gid];
-        uint256 mgr = calculateMGR(group.totalAmount, pool.poolCap);
-        group.accPerShare = pool.bonusPerBlock.mul(group.allocPoint).div(pool.totalAllocPoint).mul(mgr).div(1e18);
+        Group storage group = poolInfo[_pid].groups[_gid];
+        uint256 mgr = calculateMGR(group.totalAmount, poolInfo[_pid].poolCap);
+        group.accPerShare = poolInfo[_pid].bonusPerBlock.mul(group.allocPoint).div(poolInfo[_pid].totalAllocPoint).mul(mgr).div(1e18);
     }
 
     function getPoolInfo (uint256 _pid) public view returns (uint256 poolCap,
@@ -211,7 +238,7 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         uint256 endBlock,
         uint256 bonusPerBlock,
         uint256 lockedTotal) {
-        PoolInfo storage pool = poolInfo[_pid];
+        PoolInfo memory pool = poolInfo[_pid];
         poolCap = pool.poolCap;
         totalAllocPoint = pool.totalAllocPoint;
         startBlock = pool.startBlock;
@@ -220,11 +247,9 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         lockedTotal = pool.lockedTotal;
     }
     function getGroupInfo(uint256 _pid, uint256 _gid) public view returns (uint256 gp, uint256 groupTotal, uint256 accPerShare){
-        PoolInfo storage pool = poolInfo[_pid];
-        Group storage group = pool.groups[_gid];
-        gp = group.allocPoint;
-        groupTotal = group.totalAmount;
-        accPerShare = group.accPerShare;
+        gp = poolInfo[_pid].groups[_gid].allocPoint;
+        groupTotal = poolInfo[_pid].groups[_gid].totalAmount;
+        accPerShare = poolInfo[_pid].groups[_gid].accPerShare;
     }
 
     function _deposit(uint256 _pid, uint256 _gid, address u, uint256 _amount) internal {
@@ -243,28 +268,41 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         UserInfo storage user = group.users[u];
 
         uint256 multiplier = getMultiplier(user.lastWithdrawBlock, block.number, pool.startBlock, pool.endBlock);
-        uint256 pending = 0;
+        uint256 pending;
+        uint256 blackHole;
+        uint256 protectPrice; 
         if (group.totalAmount > 0) {
             pending = multiplier.mul(group.accPerShare).mul(user.amount).div(group.totalAmount);
         }
         group.totalAmount = group.totalAmount.add(_amount);
         updateGroup(_pid, _gid);
 
-        updateUserProtectDuration(u, user, _amount, pending, 0, true);
+        (protectPrice, blackHole) = userGainPrice(_pid, _gid, u, _amount, true); 
+        updateUserProtectDuration(u, user, _amount, pending, protectPrice, true);
+        pool.lockedTotal = pool.lockedTotal.sub(protectPrice).sub(blackHole); 
+
         emit MintDeposit(u, _pid, _gid, user.amount, group.totalAmount);
     }
 
+    struct WithdrawVar {
+        uint256 fine;
+        uint256 unlockAmount;
+        uint256 flush;
+        uint256 multiplier;
+        uint256 pending;
+        uint256 protectPrice; 
+        uint256 blackHole; 
+    }
+
     function _withdraw(uint256 _pid, uint256 _gid, address u, uint256 _amount, bool unlockedOnly) internal {
-        uint256 unlock = 0;
-        uint256 unlockAmount = 0;
-        uint256 flush = 0;
+        WithdrawVar memory vars; 
         PoolInfo storage pool = poolInfo[_pid];
         if (pool.ageout == false && pool.endBlock < block.number) {
             pool.ageout = true;
         }
         Group storage group = pool.groups[_gid];
         UserInfo storage user = group.users[u];
-        if (!(group.totalAmount > 0)) {
+        if (!(group.totalAmount > 0) || user.amount == 0) {
             return;
         }
         require(user.amount >= _amount, "withdraw: not good");
@@ -272,53 +310,65 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
             user.protectAmount = 0; 
             user.protectMintPending = 0;
         }
-        unlockAmount = user.amount.sub(user.protectAmount); 
-        require(!(unlockedOnly && unlockAmount<_amount) , "withdraw: unlocked balance not enough");
+        vars.unlockAmount = user.amount.sub(user.protectAmount); 
+        require(!(unlockedOnly && vars.unlockAmount<_amount) , "withdraw: unlocked balance not enough");
 
-        uint256 multiplier = getMultiplier(user.lastWithdrawBlock, block.number, pool.startBlock, pool.endBlock);
-        uint256 pending = multiplier.mul(group.accPerShare).mul(user.amount).div(group.totalAmount);
-        uint256 protectPrice; 
+        vars.multiplier = getMultiplier(user.lastWithdrawBlock, block.number, pool.startBlock, pool.endBlock);
+        vars.pending = vars.multiplier.mul(group.accPerShare).mul(user.amount).div(group.totalAmount);
+        vars.protectPrice; 
         {
-        uint256 rate = _priceRate(pool, group, user);
-        protectPrice = pool.lockedTotal.mul(rate).div(1e18); 
-        if (unlockAmount >= _amount) {
-            unlockedOnly = true;
+            (vars.protectPrice, vars.blackHole) = userGainPrice(_pid, _gid, u, _amount, false); 
+            if (_amount>0 && vars.unlockAmount >= _amount) {
+                unlockedOnly = true;
+            }
         }
-        }
-        (unlock, flush) = updateUserProtectDuration(u, user, 0, pending, protectPrice, unlockedOnly);
-        pool.lockedTotal = pool.lockedTotal.add(unlock).sub(protectPrice); 
+        (vars.fine, vars.flush) = updateUserProtectDuration(u, user, 0, vars.pending, vars.protectPrice, unlockedOnly);
+        pool.lockedTotal = pool.lockedTotal.add(vars.fine.div(3).mul(2)).sub(vars.protectPrice).sub(vars.blackHole); 
         user.amount = user.amount.sub(_amount);
+        group.totalAmount = group.totalAmount.sub(_amount);
+        if (vars.fine > 0) {
+            updatePricePerStake(_pid, vars.fine.div(3).mul(2));
+            mint(address(0xdead), vars.fine.div(3));
+        }
+
         if (user.protectAmount > user.amount){
             user.protectAmount = user.amount;
         }
-        user.rewardDebt = user.rewardDebt.add(pending);
-        group.totalAmount = group.totalAmount.sub(_amount);
+        user.rewardDebt = user.rewardDebt.add(vars.pending);
         if (!pool.ageout) {
             updateGroup(_pid, _gid);
         }
 
-        emit MintWithdraw(msg.sender, _pid, _gid, _amount, group.totalAmount, flush);
+        emit MintWithdraw(msg.sender, _pid, _gid, _amount, group.totalAmount, vars.flush, vars.fine);
     }
 
-    function pendingMensa(uint256 _pid, uint256 _gid, address _user) public view returns (uint256 amount, uint256 protectAmount, uint256 rewardDebt, uint256 pending, uint256 protectMintPending, uint256 protectPrice, uint256 lockedTotal) {
-        PoolInfo storage pool = poolInfo[_pid];
-        Group storage group = pool.groups[_gid];
-        UserInfo storage user = group.users[_user];
-        if (group.totalAmount == 0) {
+    function pendingMensa(uint256 _pid, uint256 _gid, address _user) public view returns (uint256 amount, uint256 protectAmount, uint256 protectBlock, uint256 pending, uint256 protectMintPending, uint256 protectPrice, uint256 lockedTotal) {
+        mintLocalVar memory vars;
+        vars.poolStartBlock = poolInfo[_pid].startBlock;
+        vars.poolEndBlock = poolInfo[_pid].endBlock;
+        vars.groupTotalAmount = poolInfo[_pid].groups[_gid].totalAmount;
+        vars.groupAccPerShare = poolInfo[_pid].groups[_gid].accPerShare;
+        vars.groupPricePerStake = poolInfo[_pid].groups[_gid].pricePerStake;
+        vars.userReceivedPerStake = poolInfo[_pid].groups[_gid].users[_user].receivedPerStake;
+        vars.userAmount = poolInfo[_pid].groups[_gid].users[_user].amount;
+        vars.userProtectAmount = poolInfo[_pid].groups[_gid].users[_user].protectAmount;
+        vars.userPDA = poolInfo[_pid].groups[_gid].users[_user].PDA;
+        vars.userMintPending = poolInfo[_pid].groups[_gid].users[_user].mintPending;
+        vars.userProtectMintPending = poolInfo[_pid].groups[_gid].users[_user].protectMintPending;
+        if (vars.groupTotalAmount == 0) {
             return (0, 0, 0, 0, 0, 0, 0);
         }
-        uint256 multiplier = getMultiplier(user.lastWithdrawBlock, block.number, pool.startBlock, pool.endBlock);
-                   pending = multiplier.mul(group.accPerShare).mul(user.amount).div(group.totalAmount).add(user.mintPending);
+        uint256 multiplier = getMultiplier(poolInfo[_pid].groups[_gid].users[_user].lastWithdrawBlock, block.number, vars.poolStartBlock, vars.poolEndBlock);
+        pending = multiplier.mul(vars.groupAccPerShare).mul(vars.userAmount).div(vars.groupTotalAmount).add(vars.userMintPending);
 
-        amount = user.amount;
-        uint256 rate = _priceRate(pool, group, user);
-        protectPrice = pool.lockedTotal.mul(rate).div(1e18); 
-        if (block.number < user.PDA) {
-            protectAmount = user.protectAmount;
-            protectMintPending = multiplier.mul(group.accPerShare).mul(user.protectAmount).div(group.totalAmount).add(user.protectMintPending);
+        amount = vars.userAmount;
+        protectPrice = vars.userAmount.mul(vars.groupPricePerStake.sub(vars.userReceivedPerStake)).div(1e18); 
+        if (block.number < vars.userPDA) {
+            protectAmount = poolInfo[_pid].groups[_gid].users[_user].protectAmount;
+            protectMintPending = multiplier.mul(vars.groupAccPerShare).mul(vars.userProtectAmount).div(vars.groupTotalAmount).add(vars.userProtectMintPending);
         }
-        rewardDebt = user.rewardDebt;
-        lockedTotal = pool.lockedTotal; 
+        protectBlock = vars.userPDA;
+        lockedTotal = poolInfo[_pid].lockedTotal; 
     }
 
     function selectPool() internal view returns (uint256){
@@ -363,60 +413,107 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
         rate = rate.mul(u.amount.sub(protectAmount)).mul(g.allocPoint).div(p.totalAllocPoint).div(g.totalAmount); 
     }
 
-    function priceRate(address u) external view returns (uint256 rate) {
-        PoolInfo storage pool = poolInfo[liquidityPool];
-        uint256 _rate;
-        Group storage group = pool.groups[depositWithdraw];
-        UserInfo storage user = group.users[u];
-        if (user.amount != 0) {
-            _rate = _priceRate(pool, group, user);
-            rate = rate.add(_rate);
+    function userGainPrice(uint256 _pid, uint256 _gid, address _u, uint256 _amount, bool isDeposit) internal returns (uint256 price, uint256 blackHole) {
+        uint256 pricePerStake = poolInfo[_pid].groups[_gid].pricePerStake; 
+        UserInfo storage u = poolInfo[_pid].groups[_gid].users[_u]; 
+        if (u.receivedPerStake >= pricePerStake) {
+            return (0, 0);
+        }
+        uint256 newAmount;
+        uint256 delta;
+
+        if (block.number >= u.PDA) {
+            price = u.amount.mul(pricePerStake.sub(u.receivedPerStake)).div(1e18); 
+            u.receivedPerStake = pricePerStake; 
+        }else{
+            if (isDeposit){
+                newAmount = u.amount.add(_amount);
+                delta = u.amount.mul(pricePerStake.sub(u.receivedPerStake)).div(newAmount); 
+                u.receivedPerStake = pricePerStake.sub(delta); 
+            }else{
+                require(u.amount >= _amount, "Not enough balance to withdraw.");
+                blackHole = _amount.mul(pricePerStake.sub(u.receivedPerStake)).div(1e18); 
+            }
+        }
+        return (price, blackHole);  
+    }
+
+    function updatePricePerStake(uint256 _pid, uint256 amount) internal {
+        uint256 input = amount.mul(1e18);
+        uint256 length = idxGroups[_pid].length;
+        for (uint256 i = 0; i < length; ++i) {
+            updateGroupStake(_pid, idxGroups[_pid][i], input);
         }
     }
 
-    function mintMensaToken(address _reserve, address _user, uint256 _gid, uint256 _amount) external noReentrancy onlyMensa {
+    function updateGroupStake(uint256 _pid, uint256 _gid, uint256 amount) internal {
+        Group storage group = poolInfo[_pid].groups[_gid];
+        if (group.totalAmount > 0) {
+            group.pricePerStake = group.pricePerStake.add(amount.mul(group.allocPoint).div(poolInfo[_pid].totalAllocPoint).div(group.totalAmount));
+        }
+    }
+
+    function mintMensaToken(address _reserve, address _user, uint256 _gid, uint256 _amount, uint256 _reserveDEC, uint256 _price) external noReentrancy onlyMensa {
+        if (_amount == 0 || _price == 0) {
+            return;
+        }
+
+        require(poolLength() >= constPoolCount, "minMensaToken: Invailed pools");
+        require(_gid == depositWithdraw || _gid == borrowRepay, "minMensaToken: Invailed action");
+        uint256 pid;
+        if (_reserve == lp) {
+            pid = liquidityPool;
+        }else{
+            pid = selectPool();
+            require(pid >= constPoolCount, "pool init fault");
+        }
+        stakeInfo storage s = poolInfo[pid].groups[_gid].userStakeInfo[_user][_reserve];
+        s.AVP = s.AVP.mul(s.amount).add(_price.mul(_amount)).div(s.amount.add(_amount));
+        s.amount = s.amount.add(_amount);
+        uint256 workload = _amount.mul(_price).div(_reserveDEC);
+        _mintMensaToken(_user, pid, _gid, workload); 
+    }
+
+    function getUserReserveAVP(uint256 _pid, uint256 _gid, address _reserve, address _user ) public view returns (uint256 amount, uint256 AVP) {
+        amount = poolInfo[_pid].groups[_gid].userStakeInfo[_user][_reserve].amount;
+        AVP = poolInfo[_pid].groups[_gid].userStakeInfo[_user][_reserve].AVP;
+    }
+
+    function _mintMensaToken(address _user, uint256 _pid, uint256 _gid, uint256 _amount) internal {
         if (_amount == 0) {
             return;
         }
-        require(poolLength() >= constPoolCount, "minMensaToken: Invailed pools");
-        require(_gid == depositWithdraw || _gid == borrowRepay, "minMensaToken: Invailed action");
-        if (_reserve == lp) {
-            _deposit(liquidityPool, _gid, _user, _amount); 
-            return;
-        }
-        uint256 _pid = selectPool();
-        if (!(_pid < constPoolCount)){
-            _deposit(_pid, _gid, _user, _amount); 
-        }
+        _deposit(_pid, _gid, _user, _amount); 
     }
 
-    function withdrawMensaToken(address _user, uint256 _gid, uint256 amount, bool unlockedOnly) external noReentrancy onlyMensa {
-        if (amount == 0) {
+    function withdrawMensaToken(address _reserve, address _user, uint256 _gid, uint256 _amount, uint256 _dec,  bool unlockedOnly) external noReentrancy onlyMensa {
+        if (_amount == 0) {
             return;
         }
         require(poolLength() > constPoolCount, "minMensaToken: Invailed pools");
         require(_gid == depositWithdraw || _gid == borrowRepay, "minMensaToken: Invailed action");
+        uint256 pid;
+        if (_reserve == lp) {
+            pid = liquidityPool;
+        }else{
+            pid = selectPool();
+            require(pid >= constPoolCount, "pool init fault");
+        }
+        stakeInfo storage s = poolInfo[pid].groups[_gid].userStakeInfo[_user][_reserve];
+        if (s.amount<_amount) {
+            _amount = s.amount;
+        }
+        s.amount = s.amount.sub(_amount);
+        uint256 workload = _amount.mul(s.AVP).div(_dec);
+        _withdrawMensaToken(_user, pid, _gid, workload, unlockedOnly); 
+    }
+
+    function _withdrawMensaToken(address _user, uint256 _pid, uint256 _gid, uint256 _amount, bool unlockedOnly) internal {
+        if (_amount == 0) {
+            return;
+        }
         
-        uint256 _amount;
-        (_amount, , , ,) = getUserAmount(_gid, _user);
-        if (amount > _amount) {
-            amount = _amount;
-        }
-        for (uint i = poolLength()-1; i >= liquidityPool; i--) {
-            _amount = poolInfo[i].groups[_gid].users[_user].amount;
-            if (_amount > 0){
-               if (amount > _amount) {
-                    _withdraw(i, _gid, _user, _amount, unlockedOnly);
-                    amount = amount.sub(_amount);
-               } else {
-                    _withdraw(i, _gid, _user, amount, unlockedOnly);
-                    amount = 0;
-               }
-            }
-            if (amount == 0) {
-                return;
-            }
-        }
+        _withdraw(_pid, _gid, _user, _amount, unlockedOnly);
     }
 
     function _withdrawPendingMensaToken(uint256 _gid, bool unlockedOnly) public {
@@ -436,12 +533,12 @@ contract MensaMiner is MensaToken, IMensaMinter, Ownable {
 
     function setPoolInited(uint256 _pid) public noReentrancy onlyOwner {
         constPoolIsInit[_pid] = true;
+        emit PoolActive(msg.sender, _pid);
     }
 
     function deposit(uint256 _pid, uint256 _gid, address u, uint256 _amount) external noReentrancy onlyOwner {
         require(_pid < liquidityPool, "only for const pool");
         require(constPoolIsInit[_pid] == false, "init failed");
-        constPoolIsInit[_pid] = true;
         _deposit(_pid, _gid, u, _amount);
     }
 

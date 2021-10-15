@@ -1374,7 +1374,7 @@ contract MensaCore is VersionedInitializable {
         uint256 _balanceIncrease
     ) internal {
         CoreLibrary.ReserveData storage reserve = reserves[_reserve];
-        CoreLibrary.UserReserveData storage user = usersReserveData[_reserve][_user];
+        CoreLibrary.UserReserveData storage user = usersReserveData[_user][_reserve];
 
         CoreLibrary.InterestRateMode borrowRateMode = getUserCurrentBorrowRateMode(_reserve, _user);
 

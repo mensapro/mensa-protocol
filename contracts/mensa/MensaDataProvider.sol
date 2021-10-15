@@ -545,26 +545,23 @@ contract MensaDataProvider is VersionedInitializable {
         usageAsCollateralEnabled = core.isUserUseReserveAsCollateralEnabled(_reserve, _user);
     }
 
-    function getReserveValues(address _reserve, uint256 amount)
+    function getReserveValues(address _reserve)
         external
         view
         returns (
-            uint256 values
+            uint256 values,
+            uint256 dec
         )
     {
-        IPriceOracleGetter oracle = IPriceOracleGetter(addressesProvider.getPriceOracle());
         UserGlobalDataLocalVars memory vars;
         (
             vars.reserveDecimals,
             ,
             ,
-            
         ) = core.getReserveConfiguration(_reserve);
-        vars.tokenUnit = 10 ** vars.reserveDecimals;
-        vars.reserveUnitPrice = oracle.getAssetPrice(_reserve);
-        values = vars
-            .reserveUnitPrice
-            .mul(amount)
-            .div(vars.tokenUnit);
+
+        dec = 10 ** vars.reserveDecimals;
+        IPriceOracleGetter oracle = IPriceOracleGetter(addressesProvider.getPriceOracle());
+        values = oracle.getAssetPrice(_reserve);
     }
 }

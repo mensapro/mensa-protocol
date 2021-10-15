@@ -31,12 +31,12 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
 
     event ProxyCreated(bytes32 id, address indexed newAddress);
 
-    bytes32 private constant MENSA = "MENSA";
-    bytes32 private constant MENSA_CORE = "MENSA_CORE";
-    bytes32 private constant MENSA_CONFIGURATOR = "MENSA_CONFIGURATOR";
-    bytes32 private constant MENSA_PARAMETERS_PROVIDER = "PARAMETERS_PROVIDER";
-    bytes32 private constant MENSA_MANAGER = "MENSA_MANAGER";
-    bytes32 private constant MENSA_LIQUIDATION_MANAGER = "LIQUIDATION_MANAGER";
+    bytes32 private constant XENSA = "XENSA";
+    bytes32 private constant XENSA_CORE = "XENSA_CORE";
+    bytes32 private constant XENSA_CONFIGURATOR = "XENSA_CONFIGURATOR";
+    bytes32 private constant XENSA_PARAMETERS_PROVIDER = "PARAMETERS_PROVIDER";
+    bytes32 private constant XENSA_MANAGER = "XENSA_MANAGER";
+    bytes32 private constant XENSA_LIQUIDATION_MANAGER = "LIQUIDATION_MANAGER";
     bytes32 private constant DATA_PROVIDER = "DATA_PROVIDER";
     bytes32 private constant ETHEREUM_ADDRESS = "ETHEREUM_ADDRESS";
     bytes32 private constant PRICE_ORACLE = "PRICE_ORACLE";
@@ -44,7 +44,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     bytes32 private constant FEE_PROVIDER = "FEE_PROVIDER";
     bytes32 private constant WALLET_BALANCE_PROVIDER = "WALLET_BALANCE_PROVIDER";
     bytes32 private constant TOKEN_DISTRIBUTOR = "TOKEN_DISTRIBUTOR";
-    bytes32 private constant MENSA_MINTER = "MENSA_MINTER ";
+    bytes32 private constant XENSA_MINTER = "XENSA_MINTER ";
 
 
     /**
@@ -52,7 +52,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @return the mensa proxy address
     **/
     function getMensa() public view returns (address) {
-        return getAddress(MENSA);
+        return getAddress(XENSA);
     }
 
 
@@ -61,7 +61,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @param _mensa the new mensa implementation
     **/
     function setMensaImpl(address _mensa) public onlyOwner {
-        updateImplInternal(MENSA, _mensa);
+        updateImplInternal(XENSA, _mensa);
         emit MensaUpdated(_mensa);
     }
 
@@ -70,7 +70,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @return the mensa core proxy address
      */
     function getMensaCore() public view returns (address payable) {
-        address payable core = address(uint160(getAddress(MENSA_CORE)));
+        address payable core = address(uint160(getAddress(XENSA_CORE)));
         return core;
     }
 
@@ -79,7 +79,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @param _mensaCore the new mensa core implementation
     **/
     function setMensaCoreImpl(address _mensaCore) public onlyOwner {
-        updateImplInternal(MENSA_CORE, _mensaCore);
+        updateImplInternal(XENSA_CORE, _mensaCore);
         emit MensaCoreUpdated(_mensaCore);
     }
 
@@ -88,7 +88,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @return the mensa configurator proxy address
     **/
     function getMensaConfigurator() public view returns (address) {
-        return getAddress(MENSA_CONFIGURATOR);
+        return getAddress(XENSA_CONFIGURATOR);
     }
 
     /**
@@ -96,7 +96,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @param _configurator the new mensa configurator implementation
     **/
     function setMensaConfiguratorImpl(address _configurator) public onlyOwner {
-        updateImplInternal(MENSA_CONFIGURATOR, _configurator);
+        updateImplInternal(XENSA_CONFIGURATOR, _configurator);
         emit MensaConfiguratorUpdated(_configurator);
     }
 
@@ -122,7 +122,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @return the address of the mensa parameters provider proxy
     **/
     function getMensaParametersProvider() public view returns (address) {
-        return getAddress(MENSA_PARAMETERS_PROVIDER);
+        return getAddress(XENSA_PARAMETERS_PROVIDER);
     }
 
     /**
@@ -130,7 +130,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @param _parametersProvider the new mensa parameters provider implementation
     **/
     function setMensaParametersProviderImpl(address _parametersProvider) public onlyOwner {
-        updateImplInternal(MENSA_PARAMETERS_PROVIDER, _parametersProvider);
+        updateImplInternal(XENSA_PARAMETERS_PROVIDER, _parametersProvider);
         emit MensaParametersProviderUpdated(_parametersProvider);
     }
 
@@ -159,7 +159,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     **/
 
     function getMensaLiquidationManager() public view returns (address) {
-        return getAddress(MENSA_LIQUIDATION_MANAGER);
+        return getAddress(XENSA_LIQUIDATION_MANAGER);
     }
 
     /**
@@ -167,7 +167,7 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     * @param _manager the new mensa liquidation manager address
     **/
     function setMensaLiquidationManager(address _manager) public onlyOwner {
-        _setAddress(MENSA_LIQUIDATION_MANAGER, _manager);
+        _setAddress(XENSA_LIQUIDATION_MANAGER, _manager);
         emit MensaLiquidationManagerUpdated(_manager);
     }
 
@@ -178,11 +178,11 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
 
 
     function getMensaManager() public view returns (address) {
-        return getAddress(MENSA_MANAGER);
+        return getAddress(XENSA_MANAGER);
     }
 
     function setMensaManager(address _mensaManager) public onlyOwner {
-        _setAddress(MENSA_MANAGER, _mensaManager);
+        _setAddress(XENSA_MANAGER, _mensaManager);
         emit MensaManagerUpdated(_mensaManager);
     }
 
@@ -214,11 +214,11 @@ contract MensaAddressesProvider is Ownable, IMensaAddressesProvider, AddressStor
     }
 
     function getMensaMinter() public view returns (address) {
-        return getAddress(MENSA_MINTER);
+        return getAddress(XENSA_MINTER);
     }
 
     function setMensaMinter(address _mensaMinter) public onlyOwner {
-        _setAddress(MENSA_MINTER, _mensaMinter);
+        _setAddress(XENSA_MINTER, _mensaMinter);
         emit MensaMinterUpdated(_mensaMinter);
     }
 
